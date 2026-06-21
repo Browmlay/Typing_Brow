@@ -651,6 +651,116 @@
             margin: 2rem 0;
         }
 
+/* Wikipedia Carousel */
+        .carousel-wrapper {
+            margin-top: 2rem;
+            width: 100%;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .carousel-title {
+            font-size: 1.25rem;
+            margin-bottom: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            padding-left: 0.5rem;
+        }
+
+        .carousel-container {
+            display: flex;
+            overflow-x: auto;
+            gap: 1.5rem;
+            padding-bottom: 1.5rem;
+            scroll-behavior: smooth;
+            width: 100%;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .carousel-container::-webkit-scrollbar {
+            height: 8px;
+        }
+
+        .carousel-container::-webkit-scrollbar-track {
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+        }
+
+        .carousel-container::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+        
+        .carousel-container::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-blue);
+        }
+
+        .book-card {
+            min-width: 160px;
+            max-width: 160px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-light);
+            border-radius: 12px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .book-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--accent-blue);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+        }
+
+        .book-cover {
+            width: 100%;
+            height: 160px;
+            object-fit: cover;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .book-info {
+            padding: 1rem;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .book-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: normal;
+            line-height: 1.3;
+        }
+
+        .book-author {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: normal;
+            line-height: 1.4;
+        }
+
+        .loading-text {
+            color: var(--text-secondary);
+            font-style: italic;
+            padding-left: 0.5rem;
+        }
+
         /* Keyboard Navigation Indicator */
         .kb-nav-hint {
             position: fixed;
@@ -787,7 +897,106 @@
         };
 
         // ============================================================================
-        // UPLOAD SECTION
+        // WIKIPEDIA COMPONENT (Image-Only Enforcement)
+        // ============================================================================
+
+function WikipediaCarousel({ onSelectBook }) {
+            const [articles, setArticles] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [fetchingText, setFetchingText] = useState(false);
+            const [triggerRefresh, setTriggerRefresh] = useState(0);
+
+            useEffect(() => {
+                let isMounted = true;
+                setLoading(true);
+
+                const fetchArticlesWithImages = async () => {
+                    let validArticles = [];
+                    try {
+                        while (validArticles.length < 10 && isMounted) {
+                            const fetchUrl = 'https://en.wikipedia.org/w/api.php?action=query&generator=random&grnnamespace=0&grnlimit=20&prop=pageimages|extracts&exchars=100&exintro=1&explaintext=1&pithumbsize=320&format=json&origin=*';
+                            
+                            const res = await fetch(fetchUrl);
+                            const data = await res.json();
+                            
+                            if (data.query && data.query.pages) {
+                                const pagesArray = Object.values(data.query.pages);
+                                const withImages = pagesArray.filter(page => page.thumbnail && page.thumbnail.source);
+                                
+                                for (const article of withImages) {
+                                    if (!validArticles.some(a => a.pageid === article.pageid)) {
+                                        validArticles.push(article);
+                                    }
+                                }
+                            }
+                        }
+
+                        if (isMounted) {
+                            setArticles(validArticles.slice(0, 10));
+                            setLoading(false);
+                        }
+                    } catch (err) {
+                        console.error('Error fetching Wikipedia articles:', err);
+                        if (isMounted) setLoading(false);
+                    }
+                };
+
+                fetchArticlesWithImages();
+                return () => { isMounted = false; };
+            }, [triggerRefresh]);
+
+            const handleArticleClick = async (article) => {
+                setFetchingText(true);
+                try {
+                    const textFetchUrl = `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&pageids=${article.pageid}&format=json&origin=*`;
+                    const res = await fetch(textFetchUrl);
+                    const data = await res.json();
+                    
+                    const pageData = data.query.pages[article.pageid];
+                    if (pageData && pageData.extract) {
+                        const cleanText = pageData.extract.replace(/==+.*?==+/g, '').replace(/\n{2,}/g, '\n\n').trim();
+                        onSelectBook(cleanText, article.title);
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert('Error loading article text.');
+                } finally {
+                    setFetchingText(false);
+                }
+            };
+
+            return e('div', { className: 'carousel-wrapper' },
+                e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' } },
+                    e('h3', { className: 'carousel-title', style: { marginBottom: 0 } }, 'Or practice with a random Wikipedia article'),
+                    e('button', { 
+                        onClick: () => setTriggerRefresh(prev => prev + 1),
+                        style: { padding: '0.4rem 0.8rem', fontSize: '0.8rem', cursor: 'pointer' }
+                    }, 'Refresh Suggestions')
+                ),
+                loading ? e('p', { className: 'loading-text' }, 'Hunting for articles with images...') :
+                fetchingText ? e('p', { className: 'loading-text' }, 'Extracting article text...') :
+                e('div', { className: 'carousel-container' },
+                    articles.map(article => e('div', {
+                        key: article.pageid,
+                        className: 'book-card',
+                        onClick: () => handleArticleClick(article)
+                    },
+                        e('img', {
+                            className: 'book-cover',
+                            src: article.thumbnail.source,
+                            alt: article.title,
+                            loading: 'lazy'
+                        }),
+                        e('div', { className: 'book-info' },
+                            e('div', { className: 'book-title', title: article.title }, article.title),
+                            e('div', { className: 'book-author', style: { WebkitLineClamp: 3, display: '-webkit-box', WebkitBoxOrient: 'vertical', whiteSpace: 'normal', fontSize: '0.75rem' } }, article.extract || 'Wikipedia, the free encyclopedia')
+                        )
+                    ))
+                )
+            );
+        }
+        // ============================================================================
+        // UPLOAD SECTION (Updated to use WikipediaCarousel)
         // ============================================================================
 
         function UploadSection({ onFileUpload, onTextInput, onResumeSession, currentSession }) {
@@ -875,13 +1084,14 @@
                                 setTextInput('');
                             } }, 'Cancel [Esc]')
                         )
-                    )
+                    ),
+                    
+                    !showTextInput && e(WikipediaCarousel, { onSelectBook: onTextInput })
                 ),
 
                 e('div', { className: 'kb-nav-hint' }, 'Tab to navigate • Enter to confirm')
             );
         }
-
         // ============================================================================
         // SETTINGS SECTION
         // ============================================================================
@@ -1020,7 +1230,6 @@
                 return () => window.removeEventListener('keydown', handleKeyDown);
             }, []);
 
-            // Auto-scroll to center active character
             useEffect(() => {
                 if (textContainerRef.current && scrollContainerRef.current) {
                     const container = scrollContainerRef.current;
@@ -1028,7 +1237,6 @@
                     const activeChar = text.querySelector('.char.active');
                     
                     if (activeChar) {
-                        // Use scrollIntoView to center the active character
                         activeChar.scrollIntoView({
                             behavior: 'smooth',
                             block: 'center',
@@ -1424,10 +1632,11 @@
                 }
             };
 
-            const handleTextInput = (text) => {
+            const handleTextInput = (text, customName) => {
+                const finalName = typeof customName === 'string' ? customName : 'Pasted Text';
                 setBookText(text);
-                setBookName('Pasted Text');
-                localStorage.setItem(STORAGE_KEYS.CURRENT_BOOK, JSON.stringify({ text, name: 'Pasted Text' }));
+                setBookName(finalName);
+                localStorage.setItem(STORAGE_KEYS.CURRENT_BOOK, JSON.stringify({ text, name: finalName }));
                 setAppState('settings');
             };
 
@@ -1467,7 +1676,6 @@
 
             const handleResumeSession = () => {
                 if (currentSession) {
-                    // Restore book text and name from localStorage if needed
                     const savedBook = localStorage.getItem(STORAGE_KEYS.CURRENT_BOOK);
                     if (savedBook) {
                         const { text, name } = JSON.parse(savedBook);
